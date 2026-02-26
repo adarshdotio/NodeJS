@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>JSON Real-time Chat</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-white font-sans">
+    <div id="authSection" class="h-screen flex items-center justify-center">
+        <div class="bg-slate-800 p-8 rounded-xl shadow-2xl w-96 border border-slate-700">
+            <h2 class="text-2xl font-bold mb-6 text-center">Chat Login</h2>
+            <input id="userIn" placeholder="Username" class="w-full p-3 mb-3 rounded bg-slate-900 border border-slate-700">
+            <input id="passIn" type="password" placeholder="Password" class="w-full p-3 mb-6 rounded bg-slate-900 border border-slate-700">
+            <button onclick="login()" class="w-full bg-blue-600 p-3 rounded font-bold hover:bg-blue-700">Connect</button>
+        </div>
+    </div>
+
+    <div id="chatSection" class="hidden h-screen flex p-4 gap-4">
+        <div class="w-1/4 bg-slate-800 rounded-xl p-4 border border-slate-700 overflow-y-auto">
+            <h3 class="text-gray-400 text-xs font-bold uppercase mb-4 tracking-widest">Contacts</h3>
+            <ul id="userList" class="space-y-2"></ul>
+        </div>
+        <div class="flex-1 bg-slate-800 rounded-xl flex flex-col border border-slate-700">
+            <div id="chatHeader" class="p-4 border-b border-slate-700 font-bold flex items-center gap-2">
+                Select a user
+                <span id="typingIndicator" class="hidden text-xs text-green-400 italic animate-pulse">is typing...</span>
+            </div>
+            <div id="msgBox" class="flex-1 p-4 overflow-y-auto space-y-4"></div>
+            <div class="p-4 border-t border-slate-700 flex gap-2">
+                <input id="msgText" placeholder="Type a message..." class="flex-1 p-3 rounded-lg bg-slate-900 border border-slate-700 outline-none focus:border-blue-500">
+                <button onclick="sendMsg()" class="bg-blue-600 px-6 rounded-lg font-bold">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws, myId, currentReceiverId, onlineUsers = [], typingTimeout;
+        const msgInput = document.getElementById('msgText');
+
+        async function login() {
+            const username = document.getElementById('userIn').value;
+            const password = document.getElementById('passIn').value;
+            let res = await fetch('/auth/login', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ username, password })});
+            if (!res.ok) { 
+                await fetch('/auth/register', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ username, password })});
+                return alert("Registered! Click Connect again.");
+            }
+            const data = await res.json();
+            myId = data.id;
+            localStorage.setItem('token', data.token);
+            startChat();
+        }
+
+        function startChat() {
+            document.getElementById('authSection').classList.add('hidden');
+            document.getElementById('chatSection').classList.remove('hidden');
+            ws = new WebSocket(`ws://${location.host}`);
+            ws.onopen = () => ws.send(JSON.stringify({ type: 'auth', token: localStorage.getItem('token') }));
+            ws.onmessage = (e) => {
+                const { type, data, onlineIds, senderId, isTyping } = JSON.parse(e.data);
+                if (type === 'status_update') { onlineUsers = onlineIds; fetchUsers(); }
+                if (type === 'user_typing' && senderId === currentReceiverId) document.getElementById('typingIndicator').classList.toggle('hidden', !isTyping);
+                if (type === 'new_msg' && (data.senderId === currentReceiverId || data.senderId === myId)) renderMessage(data);
+            };
+            fetchUsers();
+        }
+
+        async function fetchUsers() {
+            const res = await fetch('/users', { headers: {'Authorization': `Bearer ${localStorage.getItem('token')}`} });
+            const users = await res.json();
+            document.getElementById('userList').innerHTML = users.map(u => `
+                <li onclick="selectUser('${u.id}', '${u.username}')" class="p-3 bg-slate-900 rounded-lg cursor-pointer hover:bg-slate-700 flex items-center justify-between">
+                    <span>${u.username}</span>
+                    <div class="w-2 h-2 rounded-full ${onlineUsers.includes(u.id) ? 'bg-green-500' : 'bg-gray-600'}"></div>
+                </li>`).join('');
+        }
+
+        async function selectUser(id, name) {
+            currentReceiverId = id;
+            document.getElementById('chatHeader').firstChild.textContent = `Chatting with: ${name} `;
+            const res = await fetch(`/messages/${id}`, { headers: {'Authorization': `Bearer ${localStorage.getItem('token')}`} });
+            const history = await res.json();
+            document.getElementById('msgBox').innerHTML = '';
+            history.forEach(renderMessage);
+        }
+
+        function renderMessage(m) {
+            const isMe = m.senderId === myId;
+            const div = document.createElement('div');
+            div.className = `flex ${isMe ? 'justify-end' : 'justify-start'}`;
+            div.innerHTML = `<div class="${isMe ? 'bg-blue-600' : 'bg-slate-700'} p-3 rounded-xl max-w-xs shadow-md">
+                <p class="text-sm">${m.text}</p>
+                <span class="text-[10px] opacity-50 block text-right mt-1">${new Date(m.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+            </div>`;
+            const box = document.getElementById('msgBox');
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function sendMsg() {
+            if (!msgInput.value || !currentReceiverId) return;
+            ws.send(JSON.stringify({ type: 'message', receiverId: currentReceiverId, text: msgInput.value }));
+            msgInput.value = '';
+        }
+
+        msgInput.addEventListener('input', () => {
+            ws.send(JSON.stringify({ type: 'typing', receiverId: currentReceiverId, isTyping: true }));
+            clearTimeout(typingTimeout);
+            typingTimeout = setTimeout(() => ws.send(JSON.stringify({ type: 'typing', receiverId: currentReceiverId, isTyping: false })), 1500);
+        });
+    </script>
+</body>
+</html>

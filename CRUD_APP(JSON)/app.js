@@ -7,7 +7,6 @@ const DB_PATH = path.join(__dirname, 'data/tasks.json');
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.urlencoded({ extended: true }));
 
 // Helper function to read/write
 const getDb = async () => JSON.parse(await fs.readFile(DB_PATH, 'utf-8'));
