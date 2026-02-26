@@ -7,10 +7,10 @@ const jwt = require('jsonwebtoken');
 
 const app = express();
 const SECRET = 'chat_2026_key';
-const DB_PATH = path.join(__dirname, 'db.json');
+const DB_PATH = path.join(__dirname, 'data/db.json');
 
 app.use(express.json());
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Database Helpers
 const getDb = async () => JSON.parse(await fs.readFile(DB_PATH, 'utf-8'));
