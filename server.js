@@ -14,16 +14,13 @@ app.use((req, res, next) => {
 });
 
 app.get('/', (req, res) => {
-    res.status(200).json({
-      message: 'You are now browsing securely!',
-      method: 'GET'
-    });
+  res.send('<h1>Success! Secure Express in Termux!</h1>');
 });
 
 // SSL Options
 const options = {
-    key: fs.readFileSync('server.key'),
-    cert: fs.readFileSync('server.cert')
+    key: fs.readFileSync('./localhost-key.pem'),
+    cert: fs.readFileSync('./localhost.pem')
 };
 
 // Start HTTPS Server
